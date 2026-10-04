@@ -1,2 +1,2 @@
 # abap_s4d401ex
-Intermediate ABAP Programming
+This repository holds the main exercises of SAP certification S4D401
