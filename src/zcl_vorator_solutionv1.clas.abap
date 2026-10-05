@@ -6,6 +6,9 @@
 * ex06: correction of incorrect attribute type assignment (carrier_id and connection_id swap)
 * ex07: added calculation for the flight duration
 * ex10: implemented an left outer join to unify queries into a single result structure
+* ex11-12: calculations moved within the SQL statements
+* ex14: improvement of the db access by eliminating redundant queries ("reduce" usage)
+* ex15: field symbol usage to reduce overhead
 
 class zcl_vorator_solutionv1 definition
   public

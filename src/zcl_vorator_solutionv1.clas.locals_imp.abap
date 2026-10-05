@@ -134,14 +134,14 @@ class lcl_passenger_flight implementation.
         date today
         time connection-departure_time
         "time zone airports[ airport_id = connection-airport_from_id ]-timzone
-        time zone connection-timzone_to
+        time zone connection-timzone_from
         into utclong data(departure_utclong).
 
       convert
         date today
         time connection-arrival_time
         "time zone airports[ airport_id = connection-airport_to_id ]-timzone
-        time zone connection-timzone_from
+        time zone connection-timzone_to
         into utclong data(arrival_utclong).
 
       connection-duration = utclong_diff(
@@ -157,29 +157,47 @@ class lcl_passenger_flight implementation.
 
   method get_flights_by_carrier.
 
-    select
-      from /lrn/passflight
-      fields  carrier_id,
-              connection_id,
-              flight_date,
-              plane_type_id,
-              seats_max,
-              seats_occupied, seats_max - seats_occupied as seats_free,
-              currency_conversion(
-                amount = price,
-                source_currency = currency_code,
-                target_currency = @currency,
-                exchange_rate_date = flight_date,
-                on_error = @sql_currency_conversion=>c_on_error-set_to_null ) AS price,
-              @currency AS currency_code
-      where carrier_id = @i_carrier_id
-      into corresponding fields of table @flights_buffer.
+    if not line_exists( flights_buffer[ carrier_id = i_carrier_id ] ).
+      select
+        from /lrn/passflight
+        fields  carrier_id,
+                connection_id,
+                flight_date,
+                plane_type_id,
+                seats_max,
+                seats_occupied, seats_max - seats_occupied as seats_free,
+                currency_conversion(
+                  amount = price,
+                  source_currency = currency_code,
+                  target_currency = @currency,
+                  exchange_rate_date = flight_date,
+                  on_error = @sql_currency_conversion=>c_on_error-set_to_null ) AS price,
+                @currency AS currency_code
+        where carrier_id = @i_carrier_id
+*        order by flight_date ascending
+*        into corresponding fields of table @flights_buffer.
+        appending table @flights_buffer.
+    endif.
 
-    loop at flights_buffer into data(flight).
-      append new lcl_passenger_flight( i_carrier_id    = flight-carrier_id
-                                       i_connection_id = flight-connection_id
-                                       i_flight_date   = flight-flight_date ) to r_result.
-    endloop.
+    sort flights_buffer by carrier_id connection_id flight_date.
+*    delete adjacent duplicates from flights_buffer comparing carrier_id connection_id flight_date.
+
+*    loop at flights_buffer into data(flight)
+*      where carrier_id = i_carrier_id.
+*      append new lcl_passenger_flight( i_carrier_id    = flight-carrier_id
+*                                       i_connection_id = flight-connection_id
+*                                       i_flight_date   = flight-flight_date ) to r_result.
+*    endloop.
+
+    r_result = value #(
+      for <flight> in flights_buffer where ( carrier_id = i_carrier_id ) (
+        new lcl_passenger_flight(
+          i_carrier_id = <flight>-carrier_id
+          i_connection_id = <flight>-connection_id
+          i_flight_date = <flight>-flight_date
+        )
+      )
+    ).
 
   endmethod.
 
@@ -275,7 +293,7 @@ class lcl_passenger_flight implementation.
 *           |from { connection_details-airport_from_id } to { connection_details-airport_to_id } |
 *           to r_result.
     data txt type string.
-    txt = 'Flight &carrid &connid on &date from &from to &to&'(005).
+    txt = 'Flight &carrid& &connid& on &date& from &from& to &to&'(005).
     txt = replace( val = txt sub = '&carrid&' with = carrier_id ).
     txt = replace( val = txt sub = '&connid&' with = connection_id ).
     txt = replace( val = txt sub = '&date&' with = |{ flight_date date = user }| ).
@@ -378,10 +396,19 @@ class lcl_cargo_flight implementation.
 
     select
       from /lrn/cargoflight
-    fields carrier_id, connection_id, flight_date,
-           plane_type_id, maximum_load, actual_load, load_unit,
-           airport_from_id, airport_to_id, departure_time, arrival_time
-     where carrier_id    = @i_carrier_id
+      fields  carrier_id,
+              connection_id,
+              flight_date,
+              plane_type_id,
+              maximum_load,
+              actual_load,
+              load_unit,
+              airport_from_id,
+              airport_to_id,
+              departure_time,
+              arrival_time
+      where carrier_id    = @i_carrier_id
+      order by flight_date ascending
       into corresponding fields of table @flights_buffer.
 
     loop at flights_buffer into data(flight).
@@ -592,15 +619,27 @@ class lcl_carrier implementation.
 
   method get_average_free_seats.
 
-    data total type i.
+*    data total type i.
+*    loop at passenger_flights into data(flight).
+*      total = total + flight->get_free_seats( ).
+*    endloop.
+*    r_result = total / lines( passenger_flights ).
 
-    loop at passenger_flights into data(flight).
+*    select
+*      from /lrn/passflight
+*      fields  sum( seats_max - seats_occupied ) as sum,
+*              count( * ) as count
+**      fields cast( avg( seats_max - seats_occupied ) as int4 ) as r_result
+*      where carrier_id = @carrier_id
+*      into @data(aggregate).
+*
+*    r_result = aggregate-sum / aggregate-count.
 
-      total = total + flight->get_free_seats( ).
-
-    endloop.
-
-    r_result = total / lines( passenger_flights ).
+    r_result = reduce #(
+      init i = 0
+      for flight in passenger_flights
+        next i = i + flight->get_free_seats( )
+    ) / lines( passenger_flights ).
 
   endmethod.
 
