@@ -12,8 +12,9 @@
 * ex16: table types converted to hashed and sorted to improve performance (field-symbol required)
 * ex17: usage of 2nd key on hashed table
 * ex18: adding security with CDS access control
+* ex19: Inheritance
 
-class zcl_vorator_solutionv2 definition
+class zcl_vorator_solutionv3 definition
   public
   final
   create public.
@@ -27,7 +28,7 @@ endclass.
 
 
 
-class zcl_vorator_solutionv2 implementation.
+class zcl_vorator_solutionv3 implementation.
 
 
   method if_oo_adt_classrun~main.
