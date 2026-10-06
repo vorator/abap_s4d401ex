@@ -2,9 +2,36 @@
 *"* local helper classes, interface definitions and type
 *"* declarations
 
-class lcl_passenger_flight definition .
+
+
+interface lif_output.
+
+  types t_output type string.
+
+  types tt_output type standard table of t_output
+                  with non-unique default key.
+
+  methods get_output
+    returning value(r_result) type tt_output.
+
+endinterface.
+
+class lcl_flight definition abstract.
 
   public section.
+
+    interfaces lif_output.
+    aliases get_output for lif_output~get_output.
+
+    types tab type standard table of ref to lcl_flight with default key.
+
+    types: begin of st_connection_details,
+             airport_from_id type /dmo/airport_from_id,
+             airport_to_id   type /dmo/airport_to_id,
+             departure_time  type /dmo/flight_departure_time,
+             arrival_time    type /dmo/flight_departure_time,
+             duration        type i,
+           end of st_connection_details.
 
     data carrier_id    type /dmo/carrier_id       read-only.
     data connection_id type /dmo/connection_id    read-only.
@@ -16,27 +43,72 @@ class lcl_passenger_flight definition .
         i_connection_id type /dmo/connection_id
         i_flight_date   type /dmo/flight_date.
 
-    types:
-      begin of st_connection_details,
-        airport_from_id type /dmo/airport_from_id,
-        airport_to_id   type /dmo/airport_to_id,
-        departure_time  type /dmo/flight_departure_time,
-        arrival_time    type /dmo/flight_departure_time,
-        duration        type i,
-      end of st_connection_details.
-
-    types
-      tt_flights type standard table of ref to lcl_passenger_flight with default key.
-
     methods: get_connection_details
       returning
         value(r_result) type st_connection_details.
 
+  protected section.
+
+    data planetype type /dmo/plane_type_id.
+    data connection_details type st_connection_details.
+
+    methods get_description
+      returning
+        value(r_result) type string_table.
+
+  private section.
+
+endclass.
+
+class lcl_flight implementation.
+
+  method get_connection_details.
+    r_result = me->connection_details.
+  endmethod.
+
+  method get_description.
+
+    data txt type string.
+    txt = 'Flight &carrid& &connid& on &date& from &from& to &to&'(005).
+    txt = replace( val = txt sub = '&carrid&' with = carrier_id ).
+    txt = replace( val = txt sub = '&connid&' with = connection_id ).
+    txt = replace( val = txt sub = '&date&' with = |{ flight_date date = user }| ).
+    txt = replace( val = txt sub = '&from&' with = connection_details-airport_from_id ).
+    txt = replace( val = txt sub = '&to&' with = connection_details-airport_to_id ).
+
+    append txt to r_result.
+    append |{ 'Planetype:'(006) } { planetype  } | to r_result.
+
+  endmethod.
+
+  method constructor.
+    me->carrier_id    = i_carrier_id.
+    me->connection_id = i_connection_id.
+    me->flight_date   = i_flight_date.
+  endmethod.
+
+  method lif_output~get_output.
+    r_result = get_description( ).
+  endmethod.
+
+endclass.
+
+class lcl_passenger_flight definition inheriting from lcl_flight.
+
+  public section.
+
+    methods constructor
+      importing
+        i_carrier_id    type /dmo/carrier_id
+        i_connection_id type /dmo/connection_id
+        i_flight_date   type /dmo/flight_date.
+
+    types
+      tt_flights type standard table of ref to lcl_passenger_flight with default key.
+
     methods get_free_seats
       returning
         value(r_result) type i.
-
-    methods get_description returning value(r_result) type string_table.
 
     class-methods class_constructor.
 
@@ -47,6 +119,8 @@ class lcl_passenger_flight definition .
         value(r_result) type tt_flights.
 
   protected section.
+
+    methods get_description redefinition.
 
   private section.
     types: begin of st_flights_buffer,
@@ -80,13 +154,12 @@ class lcl_passenger_flight definition .
       with unique key carrier_id connection_id flight_date
       with non-unique sorted key sk_carrier components carrier_id.
 
-    data planetype type /dmo/plane_type_id.
+
     data seats_max  type /dmo/plane_seats_max.
     data seats_occ  type /dmo/plane_seats_occupied.
     data seats_free type i.
+    data price      type /dmo/flight_price.
 
-    data price type /dmo/flight_price.
-    data connection_details type st_connection_details.
 
     class-data currency type /dmo/currency_code value 'EUR'.
 
@@ -191,6 +264,11 @@ class lcl_passenger_flight implementation.
 
 
   method constructor.
+    super->constructor(
+      i_carrier_id = i_carrier_id
+      i_connection_id = i_connection_id
+      i_flight_date = i_flight_date
+    ).
 
     try.
         data(flight_raw) = flights_buffer[
@@ -222,9 +300,9 @@ class lcl_passenger_flight implementation.
     endtry.
 
     if flight_raw is not initial.
-      me->carrier_id    = i_carrier_id.
-      me->connection_id = i_connection_id.
-      me->flight_date   = i_flight_date.
+*      me->carrier_id    = i_carrier_id.
+*      me->connection_id = i_connection_id.
+*      me->flight_date   = i_flight_date.
 
       planetype = flight_raw-plane_type_id.
       seats_max = flight_raw-seats_max.
@@ -256,9 +334,7 @@ class lcl_passenger_flight implementation.
     endif.
   endmethod.
 
-  method get_connection_details.
-    r_result = me->connection_details.
-  endmethod.
+
 
 
   method get_free_seats.
@@ -267,17 +343,8 @@ class lcl_passenger_flight implementation.
 
   method get_description.
 
-    data txt type string.
-    txt = 'Flight &carrid& &connid& on &date& from &from& to &to&'(005).
-    txt = replace( val = txt sub = '&carrid&' with = carrier_id ).
-    txt = replace( val = txt sub = '&connid&' with = connection_id ).
-    txt = replace( val = txt sub = '&date&' with = |{ flight_date date = user }| ).
-    txt = replace( val = txt sub = '&from&' with = connection_details-airport_from_id ).
-    txt = replace( val = txt sub = '&to&' with = connection_details-airport_to_id ).
+    r_result = super->get_description( ).
 
-
-    append txt to r_result.
-    append |{ 'Planetype:'(006)      } { planetype  }                                     | to r_result.
     append |{ 'Maximum Seats:'(007)  } { seats_max  }                                     | to r_result.
     append |{ 'Occupied Seats:'(008) } { seats_occ }                                      | to r_result.
     append |{ 'Free Seats:'(009)     } { seats_free }                                     | to r_result.
@@ -288,24 +355,12 @@ class lcl_passenger_flight implementation.
 
 endclass.
 
-class lcl_cargo_flight definition .
+class lcl_cargo_flight definition inheriting from lcl_flight.
 
   public section.
 
-    types: begin of st_connection_details,
-             airport_from_id type /dmo/airport_from_id,
-             airport_to_id   type /dmo/airport_to_id,
-             departure_time  type /dmo/flight_departure_time,
-             arrival_time    type /dmo/flight_departure_time,
-             duration        type i,
-           end of st_connection_details.
-
     types
        tt_flights type standard table of ref to lcl_cargo_flight with default key.
-
-    data carrier_id    type /dmo/carrier_id     read-only.
-    data connection_id type /dmo/connection_id  read-only.
-    data flight_date   type /dmo/flight_date    read-only.
 
     methods constructor
       importing
@@ -313,18 +368,10 @@ class lcl_cargo_flight definition .
         i_connection_id type /dmo/connection_id
         i_flight_date   type /dmo/flight_date.
 
-    methods get_connection_details
-      returning
-        value(r_result) type st_connection_details.
-
     methods
       get_free_capacity
         returning
           value(r_result) type /lrn/plane_actual_load.
-
-    methods get_description
-      returning
-        value(r_result) type string_table.
 
     class-methods
       get_flights_by_carrier
@@ -334,6 +381,9 @@ class lcl_cargo_flight definition .
           value(r_result) type tt_flights.
 
   protected section.
+
+    methods get_description redefinition.
+
   private section.
 
     types: begin of st_flights_buffer,
@@ -352,10 +402,6 @@ class lcl_cargo_flight definition .
 
     types tt_flights_buffer type hashed table of st_flights_buffer
                             with unique key carrier_id connection_id flight_date.
-
-    data connection_details type st_connection_details.
-
-    data planetype type /dmo/plane_type_id.
 
     data maximum_load type /lrn/plane_maximum_load.
     data actual_load type /lrn/plane_actual_load.
@@ -396,6 +442,11 @@ class lcl_cargo_flight implementation.
   endmethod.
 
   method constructor.
+    super->constructor(
+      i_carrier_id = i_carrier_id
+      i_connection_id = i_connection_id
+      i_flight_date = i_flight_date
+    ).
 
     " Read buffer
     try.
@@ -415,9 +466,9 @@ class lcl_cargo_flight implementation.
           into corresponding fields of @flight_raw.
     endtry.
 
-    carrier_id    = i_carrier_id.
-    connection_id = i_connection_id.
-    flight_date   = i_flight_date.
+*    carrier_id    = i_carrier_id.
+*    connection_id = i_connection_id.
+*    flight_date   = i_flight_date.
 
     planetype = flight_raw-plane_type_id.
     maximum_load = flight_raw-maximum_load.
@@ -429,14 +480,7 @@ class lcl_cargo_flight implementation.
     connection_details-duration = ( connection_details-arrival_time
                                   - connection_details-departure_time )
                                   / 60.
-
   endmethod.
-
-
-  method get_connection_details.
-    r_result = me->connection_details.
-  endmethod.
-
 
   method get_free_capacity.
     r_result = maximum_load - actual_load.
@@ -444,9 +488,8 @@ class lcl_cargo_flight implementation.
 
   method get_description.
 
-    append |Flight { carrier_id } { connection_id } on { flight_date date = user } | &&
-           |from { connection_details-airport_from_id } to { connection_details-airport_to_id } | to r_result.
-    append |Planetype:     { planetype } |                         to r_result.
+    r_result = super->get_description( ).
+
     append |Maximum Load:  { maximum_load         } { load_unit }| to r_result.
     append |Free Capacity: { get_free_capacity( ) } { load_unit }| to r_result.
 
@@ -454,24 +497,25 @@ class lcl_cargo_flight implementation.
 
 endclass.
 
-class lcl_carrier definition .
+class lcl_carrier definition create private.
 
   public section.
 
-    types t_output type string.
-    types tt_output type standard table of t_output
-                    with non-unique default key.
+    interfaces lif_output.
+    aliases: get_output for lif_output~get_output,
+             tt_output for lif_output~tt_output,
+             t_output for lif_output~t_output.
 
-    data carrier_id type /dmo/carrier_id read-only.
-
-    methods constructor
+    class-methods get_instance
       importing
-        i_carrier_id type /dmo/carrier_id
-      raising
+        i_carrier_id    type /dmo/carrier_id
+      returning
+        value(r_result) type ref to lcl_carrier
+      RAISING
         cx_abap_invalid_value
         cx_abap_auth_check_exception.
 
-    methods get_output returning value(r_result) type tt_output.
+    data carrier_id type /dmo/carrier_id read-only.
 
     methods find_passenger_flight
       importing
@@ -480,7 +524,7 @@ class lcl_carrier definition .
         i_from_date       type /dmo/flight_date
         i_seats           type i
       exporting
-        e_flight          type ref to lcl_passenger_flight
+        e_flight          type ref to lcl_flight
         e_days_later      type i.
 
     methods find_cargo_flight
@@ -490,18 +534,33 @@ class lcl_carrier definition .
         i_from_date       type /dmo/flight_date
         i_cargo           type /lrn/plane_actual_load
       exporting
-        e_flight          type ref to lcl_cargo_flight
+        e_flight          type ref to lcl_flight
         e_days_later      type i.
 
   protected section.
   private section.
 
+    types tt_carriers type standard table of ref to lcl_carrier with default key.
+
     data name          type string.
     data currency_code type /dmo/currency_code ##needed.
 
-    data passenger_flights type lcl_passenger_flight=>tt_flights.
 
-    data cargo_flights type lcl_cargo_flight=>tt_flights.
+*    data passenger_flights type lcl_passenger_flight=>tt_flights.
+*    data cargo_flights type lcl_cargo_flight=>tt_flights.
+
+    data flights type lcl_flight=>tab.
+    data pf_count type i.
+    data cf_count type i.
+
+    class-data instances type tt_carriers.
+
+    methods constructor
+      importing
+        i_carrier_id type /dmo/carrier_id.
+*      raising
+*        cx_abap_invalid_value
+*        cx_abap_auth_check_exception.
 
     methods get_average_free_seats
       returning value(r_result) type i.
@@ -510,45 +569,70 @@ endclass.
 
 class lcl_carrier implementation.
 
-  method constructor.
+  method get_instance.
 
-    me->carrier_id = i_carrier_id.
+    select single
+      from /lrn/carrier
+      fields concat_with_space( carrier_id, name, 1 ) as name, currency_code
+      where carrier_id = @i_carrier_id
+      "into ( @me->name, @me->currency_code ).
+      into @data(details).
 
-    SELECT SINGLE
-      FROM /lrn/carrier
-      FIELDS concat_with_space( carrier_id, name, 1 ), currency_code
-      WHERE carrier_id = @i_carrier_id
-      INTO ( @me->name, @me->currency_code ).
+    if sy-subrc <> 0.
+      raise exception type cx_abap_invalid_value.
+    endif.
 
-    IF sy-subrc <> 0.
-      RAISE EXCEPTION TYPE cx_abap_invalid_value.
-    ENDIF.
+    authority-check
+      object '/LRN/CARR'
+        id '/LRN/CARR' field i_carrier_id
+        id 'ACTVT' field '03'.
 
-    AUTHORITY-CHECK
-      OBJECT '/LRN/CARR'
-        ID '/LRN/CARR' FIELD i_carrier_id
-        ID 'ACTVT' FIELD '03'.
+    if sy-subrc <> 0.
+      raise exception type cx_abap_auth_check_exception.
+    endif.
 
-    IF sy-subrc <> 0.
-      RAISE EXCEPTION TYPE cx_abap_auth_check_exception.
-    ENDIF.
+    try.
+      r_result = instances[ table_line->carrier_id = i_carrier_id ].
+    catch cx_sy_itab_line_not_found.
+      r_result = new #( i_carrier_id = i_carrier_id ).
+      r_result->name = details-name.
+      r_result->currency_code = details-currency_code.
 
-    passenger_flights =
-        lcl_passenger_flight=>get_flights_by_carrier(
-              i_carrier_id    = i_carrier_id ).
-
-    cargo_flights =
-        lcl_cargo_flight=>get_flights_by_carrier(
-              i_carrier_id    = i_carrier_id ).
+      append r_result to instances.
+    endtry.
 
   endmethod.
 
-  method get_output.
+  method constructor.
+    me->carrier_id = i_carrier_id.
 
-    append |{ 'Carrier Name:'(001) }       { me->name } | to r_result.
-    append |{ 'Passenger Flights:'(002) }  { lines( passenger_flights ) } | to r_result.
+    data(passenger_flights) =
+        lcl_passenger_flight=>get_flights_by_carrier(
+              i_carrier_id    = i_carrier_id ).
+
+    data(cargo_flights) =
+        lcl_cargo_flight=>get_flights_by_carrier(
+              i_carrier_id    = i_carrier_id ).
+
+    pf_count = lines( passenger_flights ).
+    cf_count = lines( cargo_flights ).
+
+    loop at passenger_flights into data(passflight).
+      append passflight to flights.
+    endloop.
+
+    loop at cargo_flights into data(cargoflight).
+      append cargoflight to flights.
+    endloop.
+
+  endmethod.
+
+  method lif_output~get_output.
+
+    append |{ 'Carrier Name:'(001) }       { me->name }                   | to r_result.
+    append |{ 'Passenger Flights:'(002) }  { pf_count }                   | to r_result.
     append |{ 'Average free seats:'(003) } { get_average_free_seats(  ) } | to r_result.
-    append |{ 'Cargo Flights:'(004) }      { lines( cargo_flights     ) } | to r_result.
+    append |{ 'Cargo Flights:'(004) }      { cf_count }                   | to r_result.
 
   endmethod.
 
@@ -556,14 +640,15 @@ class lcl_carrier implementation.
 
     e_days_later = 99999999.
 
-    loop at me->cargo_flights into data(flight)
-        where table_line->flight_date >= i_from_date.
+    loop at me->flights into data(flight)
+        where table_line->flight_date >= i_from_date
+          and table_line is instance of lcl_cargo_flight.
 
       data(connection_details) = flight->get_connection_details(  ).
 
       if connection_details-airport_from_id = i_airport_from_id
        and connection_details-airport_to_id = i_airport_to_id
-       and flight->get_free_capacity(  ) >= i_cargo.
+       and cast lcl_cargo_flight( flight )->get_free_capacity(  ) >= i_cargo.
 
         data(days_later) =  flight->flight_date - i_from_date.
 
@@ -580,14 +665,15 @@ class lcl_carrier implementation.
 
     e_days_later = 99999999.
 
-    loop at me->passenger_flights into data(flight)
-         where table_line->flight_date >= i_from_date.
+    loop at me->flights into data(flight)
+         where table_line->flight_date >= i_from_date
+          and table_line is instance of lcl_passenger_flight.
 
       data(connection_details) = flight->get_connection_details(  ).
 
       if connection_details-airport_from_id = i_airport_from_id
        and connection_details-airport_to_id = i_airport_to_id
-       and flight->get_free_seats( ) >= i_seats.
+       and cast lcl_passenger_flight( flight )->get_free_seats( ) >= i_seats.
         data(days_later) = flight->flight_date - i_from_date.
 
         if days_later < e_days_later. "earlier than previous one?
@@ -602,11 +688,16 @@ class lcl_carrier implementation.
 
   method get_average_free_seats.
 
-    r_result = reduce #(
-      init i = 0
-      for flight in passenger_flights
-        next i = i + flight->get_free_seats( )
-    ) / lines( passenger_flights ).
+    if pf_count > 0.
+      r_result = reduce #(
+        init i = 0
+        for flight in flights
+        where ( table_line is instance of lcl_passenger_flight )
+          next i += cast lcl_passenger_flight( flight )->get_free_seats( )
+      ) / pf_count.
+    else.
+      r_result = 0.
+    endif.
 
   endmethod.
 

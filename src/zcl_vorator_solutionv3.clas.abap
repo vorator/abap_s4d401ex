@@ -12,7 +12,9 @@
 * ex16: table types converted to hashed and sorted to improve performance (field-symbol required)
 * ex17: usage of 2nd key on hashed table
 * ex18: adding security with CDS access control
-* ex19: Inheritance
+* ex19: inheritance
+* ex21: interface
+* ex23: factory method
 
 class zcl_vorator_solutionv3 definition
   public
@@ -37,7 +39,10 @@ class zcl_vorator_solutionv3 implementation.
 *    constants c_carrier_id type /dmo/carrier_id value 'UA'.
 
     try.
-        data(carrier) = new lcl_carrier( i_carrier_id = c_carrier_id ).
+        "data(carrier) = new lcl_carrier( i_carrier_id = c_carrier_id ).
+        DATA(carrier) = lcl_carrier=>get_instance( i_carrier_id = c_carrier_id ).
+        DATA(carrier2) = lcl_carrier=>get_instance( i_carrier_id = c_carrier_id ).
+
 
         out->write( name = `Carrier Overview`
                     data = carrier->get_output(  ) ).
@@ -68,7 +73,9 @@ class zcl_vorator_solutionv3 implementation.
 
       if pass_flight is bound.
         out->write( name = |Found a suitable passenger flight in { days_later } days:|
-                    data = pass_flight->get_description( ) ).
+                    "data = pass_flight->get_description( ) ).
+                    "data = pass_flight->lif_output~get_output( ) ).
+                    data = pass_flight->get_output( ) ).
       else.
         out->write( data = `No passenger flight found` ).
       endif.
@@ -91,7 +98,9 @@ class zcl_vorator_solutionv3 implementation.
 
       if cargo_flight is bound.
         out->write( name = |Found a suitable cargo flight in { days_later2 } days:|
-                    data = cargo_flight->get_description( ) ).
+                    "data = cargo_flight->get_description( ) ).
+                    "data = cargo_flight->lif_output~get_output( ) ).
+                    data = cargo_flight->get_output( ) ).
       else.
         out->write( data = `No cargo flight found` ).
       endif.

@@ -55,9 +55,8 @@ class ltcl_find_flights implementation.
     endif.
 
     try.
-        the_carrier = new lcl_carrier(
-          i_carrier_id = some_flight_data-carrier_id
-        ).
+        "the_carrier = new lcl_carrier( i_carrier_id = some_flight_data-carrier_id ).
+        the_carrier = lcl_carrier=>get_instance( i_carrier_id = some_flight_data-carrier_id ).
       catch cx_abap_invalid_value.
         cl_abap_unit_assert=>fail( |Unable to instantiate lcl_carrier| ).
       catch cx_abap_auth_check_exception.
